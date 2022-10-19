@@ -6,17 +6,27 @@ import hashlib
 import threading
 
 
-f = open('log.txt', 'w')
+f = open('log.txt', 'w')  # лог файл
+members = []  # для рассылки сообщений всем подключённым клиентам
 
 
 def logger(message: str) -> None:
+    """Сохранение лог файла сервера"""
     f.write(message + ' | ' + str(datetime.datetime.now()) + '\n')
     print(message)
 
 
-def client_handling(conn: socket.socket) -> None:
-    conn.send("Введите ваше имя: ".encode())
-    user_name = conn.recv(1024).decode()  # получение имени пользователя
+def send_to_all_clients(from_addr: tuple, message: str) -> None:
+    """Функция отправки сообещний всем пользователям чата"""
+    for i in members:
+        if i != from_addr:
+            i[0].send(message.encode())
+
+
+def client_handling(conn: socket.socket, addr: tuple) -> None:
+    """Функция взаимодействия с клиентом"""
+    conn.send("Введите ваше имя.".encode())
+    user_name = conn.recv(1024).decode()
     logger("Подключение пользователя.")
     known = False
     with open("clients.csv", 'r') as clients_list:
@@ -33,17 +43,18 @@ def client_handling(conn: socket.socket) -> None:
                 conn.send("b$Количество попыток исчерпано!".encode())
                 logger(f"Клиент {user_name} не подтвердил свой пароль.")
                 conn.close()
-            conn.send("Введите ваш пароль: ".encode())
+            conn.send("Введите ваш пароль.".encode())
             if hashlib.md5(conn.recv(1024)).hexdigest() == user_password:
                 logger(f"Клиент {user_name} подтвердил свой пароль.")
-                conn.send(f"Здравствуйте, {user_name}!")
+                conn.send(f"Здравствуйте, {user_name}!".encode())
+                break
             else:
                 attempts -= 1
     else:
         logger("Начало регистрации нового пользователя.")
-        conn.send(f"Здравствуйте, {user_name}! Создайте пароль: ".encode())
+        conn.send(f"Здравствуйте, {user_name}! Создайте пароль.".encode())
         user_password = hashlib.md5(conn.recv(1024)).hexdigest()
-        conn.send(f"Подтвердите ваш пароль: ".encode())
+        conn.send(f"Подтвердите ваш пароль.".encode())
         if hashlib.md5(conn.recv(1024)).hexdigest() == user_password:
             conn.send(f"Вы подтвердили ваш пароль.".encode())
             logger("Успешная регистрация нового пользователя.")
@@ -53,6 +64,30 @@ def client_handling(conn: socket.socket) -> None:
         else:
             conn.send("b$Вы не подтвердили свой пароль! Переподключитесь.".encode())
             conn.close()
+    while True:
+        try:
+            data = conn.recv(1024).decode()
+            if not data:
+                logger("Отключение клиента: " + addr[0])
+                conn.close()
+                break
+            else:
+                logger(f"{user_name}: {data}")
+                if data == 'exit':
+                    print(members)
+                    send_to_all_clients(addr, f"{user_name} отключился.")
+                else:
+                    send_to_all_clients(addr, f"{user_name}: {data}")
+        except (ConnectionError, OSError):
+            logger(f"Клиент {user_name}, отключился")
+            try:
+                for i in range(len(members)):
+                    if members[i] == addr:
+                        members.pop(i)
+                        break
+            except BaseException:
+                pass
+            break
 
 
 def bind_socket(sock: socket.socket) -> None:
@@ -71,7 +106,6 @@ def bind_socket(sock: socket.socket) -> None:
 def listen() -> None:
     """Функция создаёт сокет и ожидает входящие/исходящие сообщения"""
     sock = socket.socket()
-    members = []  # для рассылки сообщений всем подключённым клиентам
     bind_socket(sock)
     sock.listen(10)
     logger("Включён режим прослушивания.")
@@ -79,9 +113,8 @@ def listen() -> None:
         conn, addr = sock.accept()
         logger(f"Присоединение клиента с ip {addr[0]}")
         members.append((conn, addr))
-        threading.Thread(target=client_handling, args=(conn, )).start()
+        threading.Thread(target=client_handling, args=(conn, (conn, addr))).start()
 
 
 listen()
-
 f.close()

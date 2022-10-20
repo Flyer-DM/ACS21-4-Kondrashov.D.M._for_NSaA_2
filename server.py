@@ -64,11 +64,12 @@ def client_handling(sock: socket.socket, conn: socket.socket, addr: tuple) -> No
                 writer = csv.DictWriter(clients_list, fieldnames=['name', 'password'])
                 writer.writerow({'name': user_name, 'password': user_password})
         else:
+            logger("Пользователь не оподтвердил свой пароль при регистрации и было отключён.")
             conn.send("$break".encode())
             conn.close()
+    send_to_all_clients(addr, f"{user_name} подключился.")
     while True:
         try:
-            send_to_all_clients(addr, f"{user_name} подключился.")
             data = conn.recv(1024).decode()
             if data == 'shutdown':
                 logger(f"Завершение работы сервера клиентом {user_name}.")

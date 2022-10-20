@@ -20,8 +20,8 @@ def listen(s: socket.socket) -> None:
             print('\r\r' + message + '\n' + 'you: ', end='')
         except ConnectionResetError:
             print("Server off.")
+            stop = True
             break
-
 
 
 def connect(host: str = '127.0.0.1', port: int = 1025) -> None:

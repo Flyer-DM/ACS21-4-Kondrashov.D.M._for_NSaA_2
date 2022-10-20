@@ -6,13 +6,13 @@ import hashlib
 import threading
 
 
-f = open('log.txt', 'w')  # лог файл
 members = []  # для рассылки сообщений всем подключённым клиентам
 
 
 def logger(message: str) -> None:
     """Сохранение лог файла сервера"""
-    f.write(message + ' | ' + str(datetime.datetime.now()) + '\n')
+    with open('log.txt', 'a+') as f:  # лог файл
+        f.write(message + ' | ' + str(datetime.datetime.now()) + '\n')
     print(message)
 
 
@@ -40,15 +40,17 @@ def client_handling(conn: socket.socket, addr: tuple) -> None:
         attempts = 3
         while True:
             if attempts == 0:
-                conn.send("b$Количество попыток исчерпано!".encode())
+                conn.send("$break".encode())
                 logger(f"Клиент {user_name} не подтвердил свой пароль.")
                 conn.close()
+                break
             conn.send("Введите ваш пароль.".encode())
             if hashlib.md5(conn.recv(1024)).hexdigest() == user_password:
                 logger(f"Клиент {user_name} подтвердил свой пароль.")
                 conn.send(f"Здравствуйте, {user_name}!".encode())
                 break
             else:
+                conn.send("Неверный пароль, попробуйте ещё раз.".encode())
                 attempts -= 1
     else:
         logger("Начало регистрации нового пользователя.")
@@ -62,11 +64,17 @@ def client_handling(conn: socket.socket, addr: tuple) -> None:
                 writer = csv.DictWriter(clients_list, fieldnames=['name', 'password'])
                 writer.writerow({'name': user_name, 'password': user_password})
         else:
-            conn.send("b$Вы не подтвердили свой пароль! Переподключитесь.".encode())
+            conn.send("$break".encode())
             conn.close()
     while True:
         try:
+            send_to_all_clients(addr, f"{user_name} подключился.")
             data = conn.recv(1024).decode()
+            if data == 'shutdown':
+                logger("Завершение работы сервера.")
+                main_thread.join()
+                conn.close()
+                break
             if not data:
                 logger("Отключение клиента: " + addr[0])
                 conn.close()
@@ -74,12 +82,10 @@ def client_handling(conn: socket.socket, addr: tuple) -> None:
             else:
                 logger(f"{user_name}: {data}")
                 if data == 'exit':
-                    print(members)
                     send_to_all_clients(addr, f"{user_name} отключился.")
                 else:
                     send_to_all_clients(addr, f"{user_name}: {data}")
-        except (ConnectionError, OSError):
-            logger(f"Клиент {user_name}, отключился")
+        except (ConnectionError, OSError):  # очищение списка всех клиентов от вышедшего
             try:
                 for i in range(len(members)):
                     if members[i] == addr:
@@ -113,8 +119,8 @@ def listen() -> None:
         conn, addr = sock.accept()
         logger(f"Присоединение клиента с ip {addr[0]}")
         members.append((conn, addr))
-        threading.Thread(target=client_handling, args=(conn, (conn, addr))).start()
+        threading.Thread(target=client_handling, args=(conn, (conn, addr)), daemon=True).start()  # поток для каждого пользователя
 
 
-listen()
-f.close()
+main_thread = threading.Thread(target=listen, name='main_thread')  # основной поток программы
+main_thread.start()

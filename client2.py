@@ -9,7 +9,7 @@ def listen(s: socket.socket) -> None:
     global stop
     while True:
         message = s.recv(1024).decode()
-        if message in ('$break', 'shutdown'):
+        if message == '$break':
             print("Disconnected.")
             stop = True
             break
@@ -31,7 +31,7 @@ def connect(host: str = '127.0.0.1', port: int = 1025) -> None:
             break
         else:
             s.send(message.encode())
-        if message in ('exit', 'shutdown'):
+        if message == "exit":
             break
     s.close()
 

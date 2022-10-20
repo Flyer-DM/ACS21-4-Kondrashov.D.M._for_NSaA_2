@@ -23,7 +23,7 @@ def send_to_all_clients(from_addr: tuple, message: str) -> None:
             i[0].send(message.encode())
 
 
-def client_handling(conn: socket.socket, addr: tuple) -> None:
+def client_handling(sock: socket.socket, conn: socket.socket, addr: tuple) -> None:
     """Функция взаимодействия с клиентом"""
     conn.send("Введите ваше имя.".encode())
     user_name = conn.recv(1024).decode()
@@ -71,9 +71,9 @@ def client_handling(conn: socket.socket, addr: tuple) -> None:
             send_to_all_clients(addr, f"{user_name} подключился.")
             data = conn.recv(1024).decode()
             if data == 'shutdown':
-                logger("Завершение работы сервера.")
-                main_thread.join()
+                logger(f"Завершение работы сервера клиентом {user_name}.")
                 conn.close()
+                sock.close()
                 break
             if not data:
                 logger("Отключение клиента: " + addr[0])
@@ -111,15 +111,18 @@ def bind_socket(sock: socket.socket) -> None:
 
 def listen() -> None:
     """Функция создаёт сокет и ожидает входящие/исходящие сообщения"""
-    sock = socket.socket()
-    bind_socket(sock)
-    sock.listen(10)
-    logger("Включён режим прослушивания.")
-    while True:
-        conn, addr = sock.accept()
-        logger(f"Присоединение клиента с ip {addr[0]}")
-        members.append((conn, addr))
-        threading.Thread(target=client_handling, args=(conn, (conn, addr)), daemon=True).start()  # поток для каждого пользователя
+    try:
+        sock = socket.socket()
+        bind_socket(sock)
+        sock.listen(10)
+        logger("Включён режим прослушивания.")
+        while True:
+            conn, addr = sock.accept()
+            logger(f"Присоединение клиента с ip {addr[0]}")
+            members.append((conn, addr))
+            threading.Thread(target=client_handling, args=(sock, conn, (conn, addr)), daemon=True).start()  # поток для каждого пользователя
+    except OSError:
+        pass
 
 
 main_thread = threading.Thread(target=listen, name='main_thread')  # основной поток программы
